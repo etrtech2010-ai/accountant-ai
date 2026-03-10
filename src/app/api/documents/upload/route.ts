@@ -59,56 +59,46 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger async processing (OCR + classification via Gemini vision)
-    processDocument(document.id, dbUser.firmId, fileUrl, fileType).catch(
-      (err) => {
-        console.error(`Failed to process document ${document.id}:`, err);
-      }
-    );
+    // Trigger async processing (OCR + classification via Groq vision)
+    processDocument(document.id, dbUser.firmId, fileUrl).catch((err) => {
+      console.error(`Failed to process document ${document.id}:`, err);
+    });
 
     return NextResponse.json({ document });
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json(
-      { error: "Upload failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }
 
 async function processDocument(
   documentId: string,
   firmId: string,
-  fileUrl: string,
-  fileType: string
+  fileUrl: string
 ) {
   try {
-    // Get firm categories for AI classification
+    // Get firm categories
     const categories = await prisma.category.findMany({
       where: { firmId },
       select: { id: true, name: true, code: true },
     });
 
-    // Get recent approvals for few-shot examples
+    // Get recent approvals for few-shot context
     const recentApprovals = await prisma.extractedItem.findMany({
-      where: {
-        document: { firmId },
-        status: "APPROVED",
-      },
+      where: { document: { firmId }, status: "APPROVED" },
       orderBy: { approvedAt: "desc" },
       take: 10,
       include: { category: { select: { name: true } } },
     });
 
-    // Single-pass: Gemini reads the image and returns structured items
-    const result = await extractAndClassifyWithGemini(
+    // Single-pass: Groq vision reads the document image and returns classified items
+    const result = await extractAndClassifyWithGroq(
       fileUrl,
-      fileType,
       categories,
       recentApprovals
     );
 
-    // Store raw Gemini output (JSON.parse/stringify gives plain any for Prisma Json field)
+    // Store raw model output
     await prisma.document.update({
       where: { id: documentId },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,7 +130,7 @@ async function processDocument(
       }
     }
 
-    // Update document status
+    // Mark document ready for review
     await prisma.document.update({
       where: { id: documentId },
       data: { status: "NEEDS_REVIEW" },
@@ -179,89 +169,80 @@ interface ExtractedItem {
   confidence: number;
 }
 
-async function extractAndClassifyWithGemini(
+async function extractAndClassifyWithGroq(
   fileUrl: string,
-  fileType: string,
   categories: CategoryRef[],
   recentApprovals: ApprovalRef[]
 ): Promise<{ raw: Record<string, unknown>; items: ExtractedItem[] }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY not configured");
 
-  // Download file and encode as base64 for Gemini vision
-  const fileResponse = await fetch(fileUrl);
-  if (!fileResponse.ok) {
-    throw new Error(`Failed to fetch document: ${fileResponse.status}`);
-  }
-  const fileBuffer = await fileResponse.arrayBuffer();
-  const base64Data = Buffer.from(fileBuffer).toString("base64");
-  const mimeType = fileType.startsWith("image/") ? fileType : "image/jpeg";
-
-  const categoryList = categories
-    .map((c) => `- ${c.name} (code: ${c.code || "N/A"}, id: ${c.id})`)
-    .join("\n");
+  const categoryList =
+    categories.length > 0
+      ? categories.map((c) => `- ${c.name} (id: ${c.id})`).join("\n")
+      : "- Other / Uncategorized (id: none)";
 
   const exampleList =
     recentApprovals.length > 0
       ? recentApprovals
           .map(
             (a) =>
-              `- "${a.vendor}" → ${a.category?.name || "Unknown"} ($${a.amount}, ${a.date ? new Date(a.date).toISOString().split("T")[0] : "N/A"})`
+              `- "${a.vendor}" → ${a.category?.name || "Unknown"} ($${a.amount})`
           )
           .join("\n")
-      : "No previous approvals yet.";
+      : "None yet.";
 
-  const prompt = `You are a bookkeeping assistant. Read this receipt or invoice image and extract all transactions.
+  const prompt = `You are a bookkeeping assistant. Examine this receipt or invoice image and extract all transactions.
 
-## Available Categories
-${categoryList || "- Other / Uncategorized (code: N/A, id: none)"}
+Available categories:
+${categoryList}
 
-## Past Classifications (for reference)
+Past classifications for reference:
 ${exampleList}
 
-## Instructions
-1. Return ONLY valid JSON. No explanation, no markdown fences.
-2. Extract every line item or transaction visible on the document.
-3. For each item, pick the single best category from the list above.
-4. If uncertain about a category, use "Other / Uncategorized" and set confidence below 0.5.
-5. Dates must be in YYYY-MM-DD format or null.
-6. Amounts must be numbers (no currency symbols).
+Return ONLY valid JSON — no explanation, no markdown fences.
+Extract every line item. For each item assign the best matching category from the list.
+Amounts are numbers without currency symbols. Dates are YYYY-MM-DD or null.
 
-## Output Format
 {"items":[{"vendor":"string","description":"string or null","date":"YYYY-MM-DD or null","amount":0.00,"taxAmount":null,"currency":"USD","categoryName":"exact name from list","categoryId":"id from list","confidence":0.9}]}`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    "https://api.groq.com/openai/v1/chat/completions",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        contents: [
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [
           {
-            parts: [
-              { inlineData: { mimeType, data: base64Data } },
-              { text: prompt },
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: fileUrl } },
+              { type: "text", text: prompt },
             ],
           },
         ],
-        generationConfig: { maxOutputTokens: 2000 },
+        max_tokens: 2000,
       }),
     }
   );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+    throw new Error(`Groq API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const text: string = data.choices?.[0]?.message?.content ?? "";
 
   const cleaned = text.replace(/```json|```/g, "").trim();
   const parsed = JSON.parse(cleaned || '{"items":[]}');
 
   return {
-    raw: { gemini: data, text },
+    raw: { groq: data, text },
     items: parsed.items || [],
   };
 }
