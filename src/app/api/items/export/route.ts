@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       include: {
         category: { select: { name: true, code: true } },
         client: { select: { name: true } },
-        document: { select: { fileName: true } },
+        document: { select: { fileName: true, client: { select: { name: true } } } },
       },
     });
 
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       item.currency,
       escapeCsv(item.category?.name || ""),
       item.category?.code || "",
-      escapeCsv(item.client?.name || ""),
+      escapeCsv(item.client?.name || item.document.client?.name || ""),
       escapeCsv(item.document.fileName),
       escapeCsv(item.notes || ""),
     ]);

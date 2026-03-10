@@ -60,9 +60,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Process synchronously so Vercel doesn't kill the function before completion
-    await processDocument(document.id, dbUser.firmId, fileUrl);
+    await processDocument(document.id, dbUser.firmId, fileUrl, clientId || null);
 
-    return NextResponse.json({ document });
+    // Re-fetch so response reflects final status (NEEDS_REVIEW or FAILED)
+    const updatedDocument = await prisma.document.findUnique({
+      where: { id: document.id },
+    });
+
+    return NextResponse.json({ document: updatedDocument ?? document });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("Upload error:", msg, error);
@@ -73,7 +78,8 @@ export async function POST(request: NextRequest) {
 async function processDocument(
   documentId: string,
   firmId: string,
-  fileUrl: string
+  fileUrl: string,
+  clientId: string | null = null
 ) {
   try {
     // Get firm categories
@@ -122,6 +128,7 @@ async function processDocument(
             date: item.date ? new Date(item.date) : null,
             categoryId: matchedCategory?.id || null,
             aiCategoryId: matchedCategory?.id || null,
+            clientId: clientId || null,
             confidence: item.confidence || 0,
             status: "PENDING",
           },
