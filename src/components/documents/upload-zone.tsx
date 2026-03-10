@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Upload, FileText, X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,6 +12,7 @@ interface UploadedDoc {
 }
 
 export function DocumentUploadZone({ firmId }: { firmId: string }) {
+  const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<UploadedDoc[]>([]);
@@ -59,6 +61,7 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
 
         if (storageError) {
           console.error("Storage error:", storageError);
+          setError(`Failed to upload ${file.name}: ${storageError.message}`);
           continue;
         }
 
@@ -87,6 +90,8 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
 
       setResults(uploadResults);
       setFiles([]);
+      // Refresh server component so new documents appear in the table
+      router.refresh();
     } catch (err) {
       setError("Upload failed. Please try again.");
       console.error(err);
@@ -182,8 +187,8 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
       {/* Results */}
       {results.length > 0 && (
         <div className="rounded-lg bg-success/10 px-3 py-2 text-sm text-emerald-700">
-          Successfully uploaded {results.length} document
-          {results.length !== 1 ? "s" : ""}. They&apos;re being processed now.
+          Successfully processed {results.length} document
+          {results.length !== 1 ? "s" : ""}. Check the Review Queue to approve extracted items.
         </div>
       )}
     </div>
