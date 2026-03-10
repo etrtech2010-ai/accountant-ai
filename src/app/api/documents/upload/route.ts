@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -60,13 +59,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Use after() so Vercel keeps the function alive until processing completes
-    after(processDocument(document.id, dbUser.firmId, fileUrl));
+    // Process synchronously so Vercel doesn't kill the function before completion
+    await processDocument(document.id, dbUser.firmId, fileUrl);
 
     return NextResponse.json({ document });
   } catch (error) {
-    console.error("Upload error:", error);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Upload error:", msg, error);
+    return NextResponse.json({ error: "Upload failed", detail: msg }, { status: 500 });
   }
 }
 
