@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -59,10 +60,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger async processing (OCR + classification via Groq vision)
-    processDocument(document.id, dbUser.firmId, fileUrl).catch((err) => {
-      console.error(`Failed to process document ${document.id}:`, err);
-    });
+    // Use after() so Vercel keeps the function alive until processing completes
+    after(processDocument(document.id, dbUser.firmId, fileUrl));
 
     return NextResponse.json({ document });
   } catch (error) {
