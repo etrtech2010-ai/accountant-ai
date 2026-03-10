@@ -59,10 +59,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger async processing (OCR + classification)
-    // In v1 this is done synchronously for simplicity
-    // In production, move to a queue/edge function
-    processDocument(document.id, dbUser.firmId, fileUrl).catch(
+    // Trigger async processing (OCR + classification via Gemini vision)
+    processDocument(document.id, dbUser.firmId, fileUrl, fileType).catch(
       (err) => {
         console.error(`Failed to process document ${document.id}:`, err);
       }
@@ -81,25 +79,17 @@ export async function POST(request: NextRequest) {
 async function processDocument(
   documentId: string,
   firmId: string,
-  fileUrl: string
+  fileUrl: string,
+  fileType: string
 ) {
   try {
-    // Step 1: OCR extraction via Mindee
-    const ocrResult = await extractWithMindee(fileUrl);
-
-    // Store raw OCR output
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { ocrRawOutput: ocrResult },
-    });
-
-    // Step 2: Get firm categories for AI classification
+    // Get firm categories for AI classification
     const categories = await prisma.category.findMany({
       where: { firmId },
       select: { id: true, name: true, code: true },
     });
 
-    // Step 3: Get recent approvals for few-shot examples
+    // Get recent approvals for few-shot examples
     const recentApprovals = await prisma.extractedItem.findMany({
       where: {
         document: { firmId },
@@ -110,16 +100,24 @@ async function processDocument(
       include: { category: { select: { name: true } } },
     });
 
-    // Step 4: AI classification via Gemini
-    const classification = await classifyWithGemini(
-      ocrResult,
+    // Single-pass: Gemini reads the image and returns structured items
+    const result = await extractAndClassifyWithGemini(
+      fileUrl,
+      fileType,
       categories,
       recentApprovals
     );
 
-    // Step 5: Create extracted items
-    if (classification && classification.items) {
-      for (const item of classification.items) {
+    // Store raw Gemini output (JSON.parse/stringify gives plain any for Prisma Json field)
+    await prisma.document.update({
+      where: { id: documentId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { ocrRawOutput: result.raw as any },
+    });
+
+    // Create extracted items
+    if (result.items && result.items.length > 0) {
+      for (const item of result.items) {
         const matchedCategory = categories.find(
           (c) => c.name === item.categoryName || c.id === item.categoryId
         );
@@ -156,34 +154,6 @@ async function processDocument(
   }
 }
 
-async function extractWithMindee(fileUrl: string) {
-  const apiKey = process.env.MINDEE_API_KEY;
-  if (!apiKey) throw new Error("MINDEE_API_KEY not configured");
-
-  // Use Mindee's Receipt API
-  const response = await fetch(
-    "https://api.mindee.net/v1/products/mindee/expense_receipts/v5/predict",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        document: fileUrl,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Mindee API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data;
-}
-
 interface CategoryRef {
   id: string;
   name: string;
@@ -197,17 +167,35 @@ interface ApprovalRef {
   category: { name: string } | null;
 }
 
-async function classifyWithGemini(
-  ocrResult: Record<string, unknown>,
+interface ExtractedItem {
+  vendor: string | null;
+  description: string | null;
+  date: string | null;
+  amount: number;
+  taxAmount: number | null;
+  currency: string;
+  categoryName: string;
+  categoryId: string;
+  confidence: number;
+}
+
+async function extractAndClassifyWithGemini(
+  fileUrl: string,
+  fileType: string,
   categories: CategoryRef[],
   recentApprovals: ApprovalRef[]
-) {
+): Promise<{ raw: Record<string, unknown>; items: ExtractedItem[] }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-  const prediction =
-    (ocrResult as { document?: { inference?: { prediction?: Record<string, unknown> } } })?.document
-      ?.inference?.prediction || {};
+  // Download file and encode as base64 for Gemini vision
+  const fileResponse = await fetch(fileUrl);
+  if (!fileResponse.ok) {
+    throw new Error(`Failed to fetch document: ${fileResponse.status}`);
+  }
+  const fileBuffer = await fileResponse.arrayBuffer();
+  const base64Data = Buffer.from(fileBuffer).toString("base64");
+  const mimeType = fileType.startsWith("image/") ? fileType : "image/jpeg";
 
   const categoryList = categories
     .map((c) => `- ${c.name} (code: ${c.code || "N/A"}, id: ${c.id})`)
@@ -223,39 +211,24 @@ async function classifyWithGemini(
           .join("\n")
       : "No previous approvals yet.";
 
-  const prompt = `You are a bookkeeping categorization assistant.
+  const prompt = `You are a bookkeeping assistant. Read this receipt or invoice image and extract all transactions.
 
 ## Available Categories
-${categoryList}
-
-## OCR Extracted Data
-${JSON.stringify(prediction, null, 2)}
+${categoryList || "- Other / Uncategorized (code: N/A, id: none)"}
 
 ## Past Classifications (for reference)
 ${exampleList}
 
 ## Instructions
-1. Return ONLY valid JSON. No explanation, no markdown.
-2. Extract all line items/transactions from the document.
+1. Return ONLY valid JSON. No explanation, no markdown fences.
+2. Extract every line item or transaction visible on the document.
 3. For each item, pick the single best category from the list above.
-4. If uncertain, use "Other / Uncategorized" and set confidence below 0.5.
+4. If uncertain about a category, use "Other / Uncategorized" and set confidence below 0.5.
+5. Dates must be in YYYY-MM-DD format or null.
+6. Amounts must be numbers (no currency symbols).
 
 ## Output Format
-{
-  "items": [
-    {
-      "vendor": "string",
-      "description": "string or null",
-      "date": "YYYY-MM-DD or null",
-      "amount": number,
-      "taxAmount": number or null,
-      "currency": "USD" or "CAD",
-      "categoryName": "exact category name from list",
-      "categoryId": "category id from list",
-      "confidence": number between 0.0 and 1.0
-    }
-  ]
-}`;
+{"items":[{"vendor":"string","description":"string or null","date":"YYYY-MM-DD or null","amount":0.00,"taxAmount":null,"currency":"USD","categoryName":"exact name from list","categoryId":"id from list","confidence":0.9}]}`;
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -263,7 +236,14 @@ ${exampleList}
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [
+          {
+            parts: [
+              { inlineData: { mimeType, data: base64Data } },
+              { text: prompt },
+            ],
+          },
+        ],
         generationConfig: { maxOutputTokens: 2000 },
       }),
     }
@@ -275,10 +255,13 @@ ${exampleList}
   }
 
   const data = await response.json();
-  const text: string =
-    data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-  // Parse JSON from response
   const cleaned = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(cleaned || "{}");
+  const parsed = JSON.parse(cleaned || '{"items":[]}');
+
+  return {
+    raw: { gemini: data, text },
+    items: parsed.items || [],
+  };
 }
