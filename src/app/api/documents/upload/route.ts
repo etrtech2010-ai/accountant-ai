@@ -237,19 +237,27 @@ Amounts are numbers without currency symbols. Dates are YYYY-MM-DD or null.
   const data = await response.json();
   const text: string = data.choices?.[0]?.message?.content ?? "";
 
-  // Extract JSON object from the response (handle text wrapping)
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  let parsed: { items?: ExtractedItem[] } = { items: [] };
-  if (jsonMatch) {
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      console.warn("Groq returned non-parseable JSON, treating as empty.");
+  // Extract JSON from the response — Groq may return {"items":[...]} or a raw array [...]
+  let items: ExtractedItem[] = [];
+  try {
+    // Try array first: [...]
+    const arrayMatch = text.match(/\[[\s\S]*\]/);
+    // Try object: {"items":[...]}
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+
+    if (arrayMatch) {
+      const arr = JSON.parse(arrayMatch[0]);
+      if (Array.isArray(arr)) items = arr;
+    } else if (objectMatch) {
+      const obj = JSON.parse(objectMatch[0]);
+      if (obj.items && Array.isArray(obj.items)) items = obj.items;
     }
+  } catch {
+    console.warn("Groq returned non-parseable JSON, treating as empty.");
   }
 
   return {
     raw: { groq: data, text },
-    items: parsed.items || [],
+    items,
   };
 }
