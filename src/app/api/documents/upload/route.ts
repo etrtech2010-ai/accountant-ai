@@ -110,8 +110,8 @@ async function processDocument(
       include: { category: { select: { name: true } } },
     });
 
-    // Step 4: AI classification via Claude
-    const classification = await classifyWithClaude(
+    // Step 4: AI classification via Gemini
+    const classification = await classifyWithGemini(
       ocrResult,
       categories,
       recentApprovals
@@ -197,13 +197,13 @@ interface ApprovalRef {
   category: { name: string } | null;
 }
 
-async function classifyWithClaude(
+async function classifyWithGemini(
   ocrResult: Record<string, unknown>,
   categories: CategoryRef[],
   recentApprovals: ApprovalRef[]
 ) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
   const prediction =
     (ocrResult as { document?: { inference?: { prediction?: Record<string, unknown> } } })?.document
@@ -257,33 +257,28 @@ ${exampleList}
   ]
 }`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 2000 },
+      }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const text = data.content
-    ?.map((block: { type: string; text?: string }) =>
-      block.type === "text" ? block.text : ""
-    )
-    .join("");
+  const text: string =
+    data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
   // Parse JSON from response
-  const cleaned = text?.replace(/```json|```/g, "").trim();
+  const cleaned = text.replace(/```json|```/g, "").trim();
   return JSON.parse(cleaned || "{}");
 }
