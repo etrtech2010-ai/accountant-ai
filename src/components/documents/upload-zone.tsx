@@ -11,12 +11,24 @@ interface UploadedDoc {
   status: string;
 }
 
-export function DocumentUploadZone({ firmId }: { firmId: string }) {
+interface ClientRef {
+  id: string;
+  name: string;
+}
+
+export function DocumentUploadZone({
+  firmId,
+  clients,
+}: {
+  firmId: string;
+  clients: ClientRef[];
+}) {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<UploadedDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -79,6 +91,7 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
             fileType: fileExt,
             fileSizeBytes: file.size,
             storagePath: filePath,
+            clientId: selectedClientId || undefined,
           }),
         });
 
@@ -102,6 +115,25 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Client Selector */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium text-foreground whitespace-nowrap">
+          Assign to Client
+        </label>
+        <select
+          value={selectedClientId}
+          onChange={(e) => setSelectedClientId(e.target.value)}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+        >
+          <option value="">Unassigned</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Drop Zone */}
       <div
         onDrop={handleDrop}
@@ -133,6 +165,11 @@ export function DocumentUploadZone({ firmId }: { firmId: string }) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-foreground">
               {files.length} file{files.length !== 1 ? "s" : ""} selected
+              {selectedClientId && clients.find((c) => c.id === selectedClientId) && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  → {clients.find((c) => c.id === selectedClientId)!.name}
+                </span>
+              )}
             </span>
             <button
               onClick={handleUpload}

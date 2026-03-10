@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle, XCircle, Edit2, Check, Loader2 } from "lucide-react";
+import Link from "next/link";
 
 interface ReviewItem {
   id: string;
@@ -81,20 +82,19 @@ export function ReviewQueueClient({
     }
   };
 
-  const handleBulkApprove = async () => {
-    if (selected.size === 0) return;
+  const handleBulkApprove = async (ids?: string[]) => {
+    const targetIds = ids ?? Array.from(selected);
+    if (targetIds.length === 0) return;
     setLoading("bulk");
     try {
       const res = await fetch("/api/items/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ids: Array.from(selected),
-          status: "APPROVED",
-        }),
+        body: JSON.stringify({ ids: targetIds, status: "APPROVED" }),
       });
       if (res.ok) {
-        setItems((prev) => prev.filter((i) => !selected.has(i.id)));
+        const targetSet = new Set(targetIds);
+        setItems((prev) => prev.filter((i) => !targetSet.has(i.id)));
         setSelected(new Set());
       }
     } catch (err) {
@@ -123,16 +123,69 @@ export function ReviewQueueClient({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-16 text-center">
-        <CheckCircle className="h-10 w-10 text-success/40" />
+        <CheckCircle className="h-10 w-10 text-emerald-500/40" />
         <p className="mt-3 text-sm font-medium text-muted-foreground">
-          All caught up! No items pending review.
+          No items pending review.
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Upload a receipt on the{" "}
+          <Link href="/documents" className="text-primary hover:underline">
+            Documents page
+          </Link>{" "}
+          to get started.
         </p>
       </div>
     );
   }
 
+  // Document summary
+  const docCounts = items.reduce((acc, item) => {
+    const name = item.document.fileName;
+    acc[name] = (acc[name] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   return (
     <div className="space-y-4">
+      {/* Document Summary */}
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Documents with pending items
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(docCounts).map(([name, count]) => (
+            <span
+              key={name}
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700"
+            >
+              {name}
+              <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-xs font-semibold">
+                {count}
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Top Actions Bar */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          {items.length} item{items.length !== 1 ? "s" : ""} pending
+        </span>
+        <button
+          onClick={() => handleBulkApprove(items.map((i) => i.id))}
+          disabled={loading === "bulk"}
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+        >
+          {loading === "bulk" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle className="h-4 w-4" />
+          )}
+          Approve All
+        </button>
+      </div>
+
       {/* Bulk Actions Bar */}
       {selected.size > 0 && (
         <div className="flex items-center justify-between rounded-lg bg-primary/10 px-4 py-2.5">
@@ -140,7 +193,7 @@ export function ReviewQueueClient({
             {selected.size} item{selected.size !== 1 ? "s" : ""} selected
           </span>
           <button
-            onClick={handleBulkApprove}
+            onClick={() => handleBulkApprove()}
             disabled={loading === "bulk"}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
           >
@@ -301,14 +354,15 @@ export function ReviewQueueClient({
                         <button
                           onClick={() => handleAction(item.id, "APPROVED")}
                           disabled={loading === item.id}
-                          className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                           title="Approve"
                         >
                           {loading === item.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <CheckCircle className="h-4 w-4" />
+                            <CheckCircle className="h-3.5 w-3.5" />
                           )}
+                          <span className="hidden md:inline">Approve</span>
                         </button>
                         <button
                           onClick={() => startEdit(item)}

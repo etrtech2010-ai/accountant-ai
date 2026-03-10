@@ -127,13 +127,20 @@ async function processDocument(
           },
         });
       }
-    }
 
-    // Mark document ready for review
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { status: "NEEDS_REVIEW" },
-    });
+      // Mark document ready for review
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { status: "NEEDS_REVIEW" },
+      });
+    } else {
+      // No items extracted — mark as failed
+      await prisma.document.update({
+        where: { id: documentId },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { status: "FAILED", ocrRawOutput: { ...(result.raw as any), message: "No items could be extracted from this document" } },
+      });
+    }
   } catch (error) {
     console.error(`Processing failed for document ${documentId}:`, error);
     await prisma.document.update({

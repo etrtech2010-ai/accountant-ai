@@ -8,15 +8,22 @@ export default async function DocumentsPage() {
   const user = await getCurrentUser();
   const firmId = user.firmId;
 
-  const documents = await prisma.document.findMany({
-    where: { firmId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      client: { select: { name: true } },
-      uploadedBy: { select: { name: true } },
-      _count: { select: { items: true } },
-    },
-  });
+  const [documents, clients] = await Promise.all([
+    prisma.document.findMany({
+      where: { firmId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        client: { select: { name: true } },
+        uploadedBy: { select: { name: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+    prisma.client.findMany({
+      where: { firmId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <div>
@@ -28,7 +35,7 @@ export default async function DocumentsPage() {
       </div>
 
       {/* Upload Zone */}
-      <DocumentUploadZone firmId={firmId} />
+      <DocumentUploadZone firmId={firmId} clients={clients} />
 
       {/* Documents Table */}
       <div className="mt-8 rounded-xl border border-border bg-card overflow-hidden">
@@ -129,6 +136,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span
+      title={status === "FAILED" ? "Upload a clearer receipt image" : undefined}
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes}`}
     >
       {label}
