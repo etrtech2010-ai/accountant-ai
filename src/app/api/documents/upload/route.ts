@@ -237,17 +237,26 @@ Amounts are numbers without currency symbols. Dates are YYYY-MM-DD or null.
   const data = await response.json();
   const text: string = data.choices?.[0]?.message?.content ?? "";
 
-  // Extract JSON from the response — Groq may return {"items":[...]} or a raw array [...]
+  // Extract JSON from the response.
+  // Groq may return any of:
+  //   [item, item, ...]               — raw array of items
+  //   {"items":[item, ...]}           — object with items key
+  //   [{"items":[item, ...]}, ...]    — array wrapping an object with items key
   let items: ExtractedItem[] = [];
   try {
-    // Try array first: [...]
     const arrayMatch = text.match(/\[[\s\S]*\]/);
-    // Try object: {"items":[...]}
     const objectMatch = text.match(/\{[\s\S]*\}/);
 
     if (arrayMatch) {
       const arr = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(arr)) items = arr;
+      if (Array.isArray(arr)) {
+        // Check if it's a wrapper array like [{"items":[...]}]
+        if (arr.length > 0 && arr[0]?.items && Array.isArray(arr[0].items)) {
+          items = arr[0].items;
+        } else {
+          items = arr;
+        }
+      }
     } else if (objectMatch) {
       const obj = JSON.parse(objectMatch[0]);
       if (obj.items && Array.isArray(obj.items)) items = obj.items;
