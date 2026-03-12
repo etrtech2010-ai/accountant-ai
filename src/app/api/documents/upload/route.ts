@@ -3,12 +3,31 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
+const ALLOWED_FILE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "application/pdf",
+];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 const uploadSchema = z.object({
-  fileName: z.string(),
-  fileUrl: z.string().url(),
-  fileType: z.string(),
-  fileSizeBytes: z.number(),
-  storagePath: z.string(),
+  fileName: z.string().min(1).max(255),
+  fileUrl: z.string().url().refine((url) => {
+    try {
+      const u = new URL(url);
+      return u.protocol === "https:" && u.hostname.endsWith(".supabase.co");
+    } catch {
+      return false;
+    }
+  }, "fileUrl must be an HTTPS Supabase Storage URL"),
+  fileType: z.string().refine((t) => ALLOWED_FILE_TYPES.includes(t), {
+    message: `fileType must be one of: ${ALLOWED_FILE_TYPES.join(", ")}`,
+  }),
+  fileSizeBytes: z.number().int().min(1, "File cannot be empty").max(MAX_FILE_SIZE, "File exceeds 10 MB limit"),
+  storagePath: z.string().min(1),
   clientId: z.string().optional(),
 });
 

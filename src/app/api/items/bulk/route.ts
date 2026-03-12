@@ -65,9 +65,12 @@ export async function PATCH(request: NextRequest) {
       });
 
       if (pendingCount === 0) {
+        const approvedCount = await prisma.extractedItem.count({
+          where: { documentId, status: { in: ["APPROVED", "EDITED"] } },
+        });
         await prisma.document.update({
           where: { id: documentId },
-          data: { status: "APPROVED" },
+          data: { status: approvedCount > 0 ? "APPROVED" : "FAILED" },
         });
       }
     }

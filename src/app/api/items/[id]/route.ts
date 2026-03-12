@@ -5,11 +5,11 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED", "EDITED", "PENDING"]).optional(),
-  vendor: z.string().optional(),
-  amount: z.number().optional(),
+  vendor: z.string().min(1, "Vendor name cannot be blank").optional(),
+  amount: z.number().min(0, "Amount must be non-negative").optional(),
   categoryId: z.string().optional(),
   clientId: z.string().optional(),
-  notes: z.string().optional(),
+  notes: z.string().max(2000).optional(),
 });
 
 export async function PATCH(
@@ -83,9 +83,12 @@ export async function PATCH(
     });
 
     if (pendingCount === 0) {
+      const approvedCount = await prisma.extractedItem.count({
+        where: { documentId: item.documentId, status: { in: ["APPROVED", "EDITED"] } },
+      });
       await prisma.document.update({
         where: { id: item.documentId },
-        data: { status: "APPROVED" },
+        data: { status: approvedCount > 0 ? "APPROVED" : "FAILED" },
       });
     }
 

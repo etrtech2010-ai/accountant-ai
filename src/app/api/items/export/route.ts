@@ -34,9 +34,22 @@ export async function GET(request: NextRequest) {
 
     if (clientId) where.clientId = clientId;
     if (from || to) {
-      where.date = {};
-      if (from) (where.date as Record<string, unknown>).gte = new Date(from);
-      if (to) (where.date as Record<string, unknown>).lte = new Date(to);
+      const dateRange: Record<string, Date> = {};
+      if (from) {
+        const fromDate = new Date(from);
+        if (isNaN(fromDate.getTime())) {
+          return NextResponse.json({ error: "Invalid 'from' date" }, { status: 400 });
+        }
+        dateRange.gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to);
+        if (isNaN(toDate.getTime())) {
+          return NextResponse.json({ error: "Invalid 'to' date" }, { status: 400 });
+        }
+        dateRange.lte = toDate;
+      }
+      where.date = dateRange;
     }
 
     const items = await prisma.extractedItem.findMany({
@@ -100,8 +113,13 @@ export async function GET(request: NextRequest) {
 }
 
 function escapeCsv(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Prevent CSV formula injection (=, +, @, -, tab, \r at start of cell)
+  let v = value.trim();
+  if (v && /^[=+@\-\t\r]/.test(v)) {
+    v = "'" + v;
   }
-  return value;
+  if (v.includes(",") || v.includes('"') || v.includes("\n") || v.includes("\r")) {
+    return `"${v.replace(/"/g, '""')}"`;
+  }
+  return v;
 }
