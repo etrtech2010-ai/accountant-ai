@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { resend, FROM_EMAIL, APP_URL } from "@/lib/resend";
+import { render } from "@react-email/render";
+import { DocumentProcessedEmail, documentProcessedSubject } from "@/lib/emails/document-processed";
+import { DocumentFailedEmail, documentFailedSubject } from "@/lib/emails/document-failed";
 
 const ALLOWED_FILE_TYPES = [
   "image/jpeg",
@@ -86,11 +90,78 @@ export async function POST(request: NextRequest) {
       where: { id: document.id },
     });
 
+    // Fire email notification async — do NOT await (must not slow down response)
+    sendDocumentEmail(
+      dbUser.firmId,
+      fileName,
+      updatedDocument?.status ?? document.status,
+      updatedDocument?.id ?? document.id,
+    ).catch((err) => console.error("Email send error (non-fatal):", err));
+
     return NextResponse.json({ document: updatedDocument ?? document });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("Upload error:", msg, error);
     return NextResponse.json({ error: "Upload failed", detail: msg }, { status: 500 });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email notification (fire-and-forget — never throws)
+// ---------------------------------------------------------------------------
+async function sendDocumentEmail(
+  firmId: string,
+  fileName: string,
+  status: string,
+  documentId: string,
+) {
+  if (!process.env.RESEND_API_KEY) return; // Skip if not configured
+
+  // Get firm owner email + firm name
+  const owner = await prisma.user.findFirst({
+    where: { firmId, role: "OWNER" },
+    select: { email: true, firm: { select: { name: true } } },
+  });
+
+  if (!owner?.email) return;
+
+  const firmName = owner.firm?.name ?? "Your Firm";
+  const uploadedAt = new Date().toLocaleDateString("en-US", {
+    year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+
+  if (status === "NEEDS_REVIEW") {
+    const itemCount = await prisma.extractedItem.count({ where: { documentId } });
+    const html = await render(
+      <DocumentProcessedEmail
+        firmName={firmName}
+        fileName={fileName}
+        itemCount={itemCount}
+        uploadedAt={uploadedAt}
+        reviewUrl={`${APP_URL}/review`}
+      />
+    );
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: owner.email,
+      subject: documentProcessedSubject(fileName, itemCount),
+      html,
+    });
+  } else if (status === "FAILED") {
+    const html = await render(
+      <DocumentFailedEmail
+        firmName={firmName}
+        fileName={fileName}
+        uploadedAt={uploadedAt}
+        documentsUrl={`${APP_URL}/documents`}
+      />
+    );
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: owner.email,
+      subject: documentFailedSubject(fileName),
+      html,
+    });
   }
 }
 
