@@ -1,10 +1,13 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import Link from "next/link";
 import {
   FileText,
   CheckCircle,
   Clock,
   TrendingUp,
+  GitMerge,
+  AlertCircle,
 } from "lucide-react";
 
 export default async function DashboardPage() {
@@ -12,7 +15,7 @@ export default async function DashboardPage() {
   const firmId = user.firmId;
 
   // Fetch stats
-  const [totalDocs, pendingItems, approvedItems, recentDocs] =
+  const [totalDocs, pendingItems, approvedItems, recentDocs, reconcStats] =
     await Promise.all([
       prisma.document.count({ where: { firmId } }),
       prisma.extractedItem.count({
@@ -30,11 +33,25 @@ export default async function DashboardPage() {
           _count: { select: { items: true } },
         },
       }),
+      prisma.bankTransaction.groupBy({
+        by: ["status"],
+        where: { firmId },
+        _count: true,
+      }),
     ]);
 
   const totalItems = pendingItems + approvedItems;
   const accuracyRate =
     totalItems > 0 ? Math.round((approvedItems / totalItems) * 100) : 0;
+
+  const reconCount = { MATCHED: 0, UNMATCHED: 0, IGNORED: 0 };
+  for (const row of reconcStats) {
+    if (row.status in reconCount)
+      reconCount[row.status as keyof typeof reconCount] = row._count;
+  }
+  const reconTotal = reconCount.MATCHED + reconCount.UNMATCHED + reconCount.IGNORED;
+  const reconRate =
+    reconTotal > 0 ? Math.round((reconCount.MATCHED / reconTotal) * 100) : 0;
 
   const stats = [
     {
@@ -102,6 +119,41 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Reconciliation Stats */}
+      {reconTotal > 0 && (
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                <GitMerge className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">{reconRate}%</p>
+                <p className="text-xs text-muted-foreground">Reconciliation Rate</p>
+              </div>
+            </div>
+          </div>
+          <Link
+            href="/reconciliation"
+            className="rounded-xl border border-border bg-card p-5 transition-colors hover:bg-muted/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">
+                  {reconCount.UNMATCHED}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Unmatched Transactions — Review →
+                </p>
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Recent Documents */}
       <div className="mt-8">

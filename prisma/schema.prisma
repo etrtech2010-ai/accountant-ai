@@ -19,10 +19,11 @@ model Firm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users      User[]
-  clients    Client[]
-  documents  Document[]
-  categories Category[]
+  users            User[]
+  clients          Client[]
+  documents        Document[]
+  categories       Category[]
+  bankTransactions BankTransaction[]
 
   @@map("firms")
 }
@@ -71,9 +72,10 @@ model Client {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  firm      Firm            @relation(fields: [firmId], references: [id], onDelete: Cascade)
-  documents Document[]
-  items     ExtractedItem[]
+  firm             Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  documents        Document[]
+  items            ExtractedItem[]
+  bankTransactions BankTransaction[]
 
   @@index([firmId])
   @@map("clients")
@@ -135,16 +137,44 @@ model ExtractedItem {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  client     Client?   @relation(fields: [clientId], references: [id])
-  category   Category? @relation("AssignedCategory", fields: [categoryId], references: [id])
-  aiCategory Category? @relation("AiSuggestedCategory", fields: [aiCategoryId], references: [id])
-  approvedBy User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+  document             Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  client               Client?          @relation(fields: [clientId], references: [id])
+  category             Category?        @relation("AssignedCategory", fields: [categoryId], references: [id])
+  aiCategory           Category?        @relation("AiSuggestedCategory", fields: [aiCategoryId], references: [id])
+  approvedBy           User?            @relation("ApprovedBy", fields: [approvedById], references: [id])
+  matchedTransaction   BankTransaction?
 
   @@index([documentId])
   @@index([status])
   @@index([clientId])
   @@map("extracted_items")
+}
+
+// ============================================
+// BANK STATEMENT RECONCILIATION
+// ============================================
+
+model BankTransaction {
+  id            String   @id @default(cuid())
+  firmId        String
+  clientId      String?
+  date          DateTime
+  description   String
+  amount        Decimal  @db.Decimal(10, 2)
+  type          String   // DEBIT or CREDIT
+  balance       Float?
+  status        String   @default("UNMATCHED") // UNMATCHED, MATCHED, IGNORED
+  matchedItemId String?  @unique
+  uploadedAt    DateTime @default(now())
+
+  firm        Firm           @relation(fields: [firmId], references: [id])
+  client      Client?        @relation(fields: [clientId], references: [id])
+  matchedItem ExtractedItem? @relation(fields: [matchedItemId], references: [id])
+
+  @@index([firmId])
+  @@index([status])
+  @@index([clientId])
+  @@map("bank_transactions")
 }
 
 enum ItemStatus {

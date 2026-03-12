@@ -10,6 +10,7 @@ import {
   Settings,
   Upload,
   LogOut,
+  GitMerge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/review", label: "Review Queue", icon: CheckSquare },
+  { href: "/reconciliation", label: "Reconciliation", icon: GitMerge },
   { href: "/clients", label: "Clients", icon: Users },
 ];
 
