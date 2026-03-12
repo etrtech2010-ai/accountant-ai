@@ -8,9 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AccountantAI — Your AI-Powered Bookkeeping Assistant",
+  title: "Emplero",
   description:
-    "Automate receipt categorization and document intake for your bookkeeping firm.",
+    "Emplero — AI bookkeeping for modern accounting firms. Upload receipts, auto-categorize expenses, and export to QuickBooks in seconds.",
 };
 
 export default function RootLayout({

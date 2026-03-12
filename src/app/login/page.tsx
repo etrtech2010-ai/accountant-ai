@@ -46,7 +46,7 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Sign in to your AccountantAI account
+            Sign in to your Emplero account
           </p>
         </div>
 

@@ -44,7 +44,7 @@ export function Sidebar() {
           <FileText className="h-4 w-4 text-white" />
         </div>
         <span className="text-lg font-semibold tracking-tight">
-          AccountantAI
+          Emplero
         </span>
       </div>
 

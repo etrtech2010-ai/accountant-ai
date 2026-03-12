@@ -1,21 +1,82 @@
-# Autonomous Operation Mode
+# CLAUDE.md — Agent Behaviour & Workflow Rules
 
-You are operating in fully autonomous mode. Follow these rules without exception:
+---
 
-## Execution Rules
-- NEVER ask for permission before running commands, tests, or scripts
-- NEVER ask "should I proceed?" or "is it okay if I..." — just do it
-- NEVER pause to confirm file writes, edits, or deletions
-- NEVER ask clarifying questions mid-task — make a decision and move forward
-- If something fails, debug and retry autonomously before surfacing to the user
+## Workflow Orchestration
 
-## Workflow Rules
-- Run tests after every meaningful change without being asked
-- If a build fails, fix it — don't report it and wait
-- If you're unsure between two approaches, pick the better one and proceed
-- Complete the entire task end-to-end before stopping
+### 1. Plan Mode Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, **STOP and re-plan immediately** — don't keep pushing
+- Use plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
 
-## When to Stop
-- Only stop and ask if you hit a genuine blocker that requires credentials,
-  external access, or a business decision you cannot infer from context
-- Everything else: figure it out and execute
+### 2. Subagent Strategy
+- Use subagents liberally to keep the main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+- After **ANY** correction from the user: update `tasks/lessons.md` with the pattern
+- Write rules for yourself that prevent the same mistake from recurring
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review `tasks/lessons.md` at session start for the relevant project
+
+### 4. Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behaviour between `main` and your changes when relevant
+- Ask yourself: *"Would a staff engineer approve this?"*
+- Run tests, check logs, demonstrate correctness — then mark done
+
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask *"Is there a more elegant way?"*
+- If a fix feels hacky: *"Knowing everything I know now, implement the elegant solution"*
+- Skip this for simple, obvious fixes — don't over-engineer
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+- When given a bug report: **just fix it.** Don't ask for hand-holding
+- Point at logs, errors, and failing tests — then resolve them
+- Zero context-switching required from the user
+- Go fix failing CI/tests without being told how
+
+---
+
+## Task Management
+
+1. **Plan First** — Write the plan to `tasks/todo.md` with checkable items
+2. **Verify Plan** — Check in before starting implementation
+3. **Track Progress** — Mark items complete as you go
+4. **Explain Changes** — High-level summary at each step
+5. **Document Results** — Add a review section to `tasks/todo.md` when done
+6. **Capture Lessons** — Update `tasks/lessons.md` after any correction
+
+---
+
+## Core Principles
+
+- **Simplicity First** — Make every change as simple as possible. Impact minimal code.
+- **No Laziness** — Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact** — Changes should only touch what's necessary. Avoid introducing bugs adjacent to the fix.
+- **No Assumptions** — If scope is unclear, clarify before touching code. Don't invent requirements.
+- **Own Your Output** — You wrote it, you verify it. Don't ship something you haven't tested mentally end-to-end.
+
+---
+
+## Stack Context (Osler / Active Projects)
+
+- **Frontend:** Next.js 15 App Router, TypeScript, TailwindCSS, shadcn/ui
+- **Backend:** Supabase (Auth + Postgres + Storage, `ca-central-1`), Prisma ORM, Edge Functions
+- **AI:** Anthropic Claude API (SOAP note generation), Deepgram (audio transcription)
+- **Infra:** Vercel, GitHub
+- **Local:** Windows, PowerShell, VS Code, Docker Desktop
+- **Compliance target:** PHIPA — Canadian data residency required. Never route PHI outside `ca-central-1`.
+
+---
+
+## Non-Negotiables
+
+- Never expose `.env` values or secrets in code, logs, or responses
+- Always use `--break-system-packages` flag for pip installs in this environment
+- PHI (patient health information) must never leave Canadian infrastructure
+- Prisma schema changes require `prisma db push` or a migration — never manual SQL edits on prod

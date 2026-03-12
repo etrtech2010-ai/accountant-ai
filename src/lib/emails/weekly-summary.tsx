@@ -53,7 +53,7 @@ export function WeeklySummaryEmail({
         <Container style={container}>
           {/* Header */}
           <Section style={header}>
-            <Text style={logo}>📊 Accountant AI</Text>
+            <Text style={logo}>📊 Emplero</Text>
             <Text style={headerSub}>Weekly Summary</Text>
           </Section>
 
@@ -119,7 +119,7 @@ export function WeeklySummaryEmail({
 
           <Hr style={hr} />
           <Text style={footerText}>
-            Accountant AI · Weekly summary for {firmName}. You receive this
+            Emplero · Weekly summary for {firmName}. You receive this
             every week.
           </Text>
         </Container>

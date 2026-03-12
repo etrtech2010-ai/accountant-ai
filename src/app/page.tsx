@@ -12,7 +12,7 @@ export default function LandingPage() {
               <FileText className="h-4 w-4 text-white" />
             </div>
             <span className="text-lg font-semibold tracking-tight text-foreground">
-              AccountantAI
+              Emplero
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -37,17 +37,16 @@ export default function LandingPage() {
         <div className="max-w-3xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
             <Zap className="h-3.5 w-3.5" />
-            AI-Powered Bookkeeping
+            AI-powered bookkeeping for modern firms
           </div>
           <h1 className="text-5xl font-bold tracking-tight text-foreground leading-tight">
-            Stop manually categorizing
+            The AI bookkeeping assistant
             <br />
-            receipts and invoices.
+            for modern accounting firms.
           </h1>
           <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
-            Upload your client documents. Our AI extracts the data, categorizes
-            every transaction, and gives you a clean review queue. Export to CSV
-            in one click.
+            Upload receipts, auto-categorize expenses, review with one click,
+            export to QuickBooks.
           </p>
           <div className="mt-8 flex items-center gap-4">
             <Link
@@ -126,7 +125,7 @@ export default function LandingPage() {
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
           <span className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} AccountantAI
+            &copy; {new Date().getFullYear()} Emplero
           </span>
           <div className="flex items-center gap-6">
             <Link

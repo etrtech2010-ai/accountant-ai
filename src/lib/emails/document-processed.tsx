@@ -34,7 +34,7 @@ export function DocumentProcessedEmail({
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
-            <Text style={logo}>📊 Accountant AI</Text>
+            <Text style={logo}>📊 Emplero</Text>
           </Section>
 
           <Section style={content}>
@@ -76,7 +76,7 @@ export function DocumentProcessedEmail({
 
           <Hr style={hr} />
           <Text style={footerText}>
-            Accountant AI · You are receiving this because you uploaded a
+            Emplero · You are receiving this because you uploaded a
             document to your firm workspace.
           </Text>
         </Container>

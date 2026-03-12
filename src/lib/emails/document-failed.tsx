@@ -32,7 +32,7 @@ export function DocumentFailedEmail({
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
-            <Text style={logo}>📊 Accountant AI</Text>
+            <Text style={logo}>📊 Emplero</Text>
           </Section>
 
           <Section style={content}>
@@ -77,7 +77,7 @@ export function DocumentFailedEmail({
 
           <Hr style={hr} />
           <Text style={footerText}>
-            Accountant AI · You are receiving this because a document upload
+            Emplero · You are receiving this because a document upload
             failed in your firm workspace.
           </Text>
         </Container>

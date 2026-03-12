@@ -1,6 +1,6 @@
-# AccountantAI
+# Emplero
 
-AI-powered document intake and auto-categorization for bookkeeping firms.
+AI-powered bookkeeping for modern accounting firms.
 
 ## Quick Setup
 

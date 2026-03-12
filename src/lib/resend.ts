@@ -9,4 +9,4 @@ export const FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 export const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL || "https://accountant-ai-woad.vercel.app";
+  process.env.NEXT_PUBLIC_APP_URL || "https://app.emplero.com";
