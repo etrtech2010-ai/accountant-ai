@@ -113,9 +113,21 @@ async function processDocument(
     // Create extracted items
     if (result.items && result.items.length > 0) {
       for (const item of result.items) {
-        const matchedCategory = categories.find(
-          (c) => c.name === item.categoryName || c.id === item.categoryId
-        );
+        // Match by exact name first, then case-insensitive, then partial
+        const normalise = (s: string) => s.toLowerCase().trim();
+        const matchedCategory =
+          categories.find((c) => c.name === item.categoryName) ||
+          categories.find(
+            (c) => normalise(c.name) === normalise(item.categoryName ?? "")
+          ) ||
+          categories.find((c) =>
+            normalise(c.name).includes(normalise(item.categoryName ?? "").slice(0, 8))
+          );
+
+        // Lorem Ipsum detection — fake vendor names get low confidence
+        const loremPattern = /\b(lorem|ipsum|dolor|sit amet|consectetur|adipiscing)\b/i;
+        const isLoremVendor = loremPattern.test(item.vendor ?? "") || loremPattern.test(item.description ?? "");
+        const confidence = isLoremVendor ? 0.1 : (item.confidence ?? 0.5);
 
         await prisma.extractedItem.create({
           data: {
@@ -129,7 +141,7 @@ async function processDocument(
             categoryId: matchedCategory?.id || null,
             aiCategoryId: matchedCategory?.id || null,
             clientId: clientId || null,
-            confidence: item.confidence || 0,
+            confidence,
             status: "PENDING",
           },
         });
@@ -178,7 +190,6 @@ interface ExtractedItem {
   taxAmount: number | null;
   currency: string;
   categoryName: string;
-  categoryId: string;
   confidence: number;
 }
 
@@ -190,34 +201,62 @@ async function extractAndClassifyWithGroq(
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY not configured");
 
+  // Build category list without IDs — Groq fabricates IDs, so only use names
   const categoryList =
     categories.length > 0
-      ? categories.map((c) => `- ${c.name} (id: ${c.id})`).join("\n")
-      : "- Other / Uncategorized (id: none)";
+      ? categories.map((c) => `  "${c.name}"`).join(",\n")
+      : `  "Other / Uncategorized"`;
 
   const exampleList =
     recentApprovals.length > 0
       ? recentApprovals
           .map(
             (a) =>
-              `- "${a.vendor}" → ${a.category?.name || "Unknown"} ($${a.amount})`
+              `  { "vendor": "${a.vendor}", "categoryName": "${a.category?.name || "Other / Uncategorized"}" }`
           )
-          .join("\n")
-      : "None yet.";
+          .join(",\n")
+      : "  (none yet)";
 
-  const prompt = `You are a bookkeeping assistant. Examine this receipt or invoice image and extract all transactions.
+  const prompt = `You are an expert bookkeeper. Examine this receipt or invoice image and extract ALL line items.
 
-Available categories:
+CATEGORY LIST (you MUST pick exactly one name from this list for each item):
+[
 ${categoryList}
+]
 
-Past classifications for reference:
+CLASSIFICATION RULES:
+- Restaurant, cafe, bar, food, beverage, dining → "Meals & Entertainment"
+- Hotel, airline, taxi, train, bus, fuel, parking, tolls → "Travel & Transportation"
+- Computer, phone, printer, camera, machinery → "Equipment & Machinery"
+- Rent, office space, lease payment → "Rent & Lease"
+- Electricity, gas, water, internet, phone bill → "Utilities"
+- Software, app, SaaS subscription, cloud service → "Software & SaaS"
+- Legal, accounting, consulting fees → "Professional Services"
+- Office paper, pens, stationery, printer ink → "Office Supplies"
+- Google Ads, Facebook Ads, marketing agency → "Advertising & Marketing"
+- Bank fee, wire transfer fee, credit card fee → "Bank & Financial Charges"
+- Freelancer, contractor invoice → "Contractors & Freelancers"
+- Gym, professional association, magazine → "Dues & Subscriptions"
+- Car fuel, car repair for business vehicle → "Vehicle Expenses"
+- Business insurance premium → "Insurance"
+- Payroll, employee wages → "Wages & Salaries"
+- Property tax, business license, permits → "Taxes & Licenses"
+- Plumber, electrician, HVAC for office → "Repairs & Maintenance"
+- Anything else → "Other / Uncategorized"
+
+Past approved classifications (use as reference):
+[
 ${exampleList}
+]
 
-Return ONLY valid JSON — no explanation, no markdown fences.
-Extract every line item. For each item assign the best matching category from the list.
-Amounts are numbers without currency symbols. Dates are YYYY-MM-DD or null.
+IMPORTANT:
+- Return ONLY valid JSON — no explanation, no markdown, no code fences
+- "categoryName" MUST be copied exactly (same spelling, spacing, ampersands) from the CATEGORY LIST above
+- Do NOT use "Other / Uncategorized" if a better match exists
+- Amounts are plain numbers (no currency symbols). Dates are YYYY-MM-DD or null.
+- "confidence" is a float 0.0–1.0 reflecting how certain you are of the extraction
 
-{"items":[{"vendor":"string","description":"string or null","date":"YYYY-MM-DD or null","amount":0.00,"taxAmount":null,"currency":"USD","categoryName":"exact name from list","categoryId":"id from list","confidence":0.9}]}`;
+{"items":[{"vendor":"string","description":"string or null","date":"YYYY-MM-DD or null","amount":0.00,"taxAmount":null,"currency":"USD","categoryName":"exact name from category list","confidence":0.95}]}`;
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -238,7 +277,7 @@ Amounts are numbers without currency symbols. Dates are YYYY-MM-DD or null.
             ],
           },
         ],
-        max_tokens: 2000,
+        max_tokens: 4000,
       }),
     }
   );
